@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-mcp-server"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight MCP server that lets AI agents generate and iteratively refine images, audio, and video using a local ComfyUI instance."
 readme = "README.md"
 requires-python = ">=3.11"
