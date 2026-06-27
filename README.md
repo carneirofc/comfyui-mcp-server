@@ -14,11 +14,15 @@ This proves everything is working.
 
 ### 1) Clone and set up
 
+This project uses [uv](https://docs.astral.sh/uv/) for dependency and environment management.
+
 ```bash
 git clone https://github.com/joenorton/comfyui-mcp-server.git
 cd comfyui-mcp-server
-pip install -r requirements.txt
+uv sync
 ```
+
+`uv sync` creates a virtual environment and installs all dependencies from `pyproject.toml` / `uv.lock`. Prefix commands with `uv run` to execute them inside that environment (no manual activation needed).
 
 ### 2) Start ComfyUI
 
@@ -34,7 +38,7 @@ python main.py --port 8188
 From the repository directory:
 
 ```bash
-python server.py
+uv run python server.py
 ```
 
 The server listens at:
@@ -49,11 +53,11 @@ Run the included test client:
 
 ```bash
 # Use default prompt
-python test_client.py
+uv run python test_client.py
 
 # Or provide your own prompt
-python test_client.py -p "a beautiful sunset over mountains"
-python test_client.py --prompt "a cat on a mat"
+uv run python test_client.py -p "a beautiful sunset over mountains"
+uv run python test_client.py --prompt "a cat on a mat"
 ```
 
 `test_client.py` will:
@@ -311,8 +315,8 @@ comfyui-mcp-server/
 
 **Server won't start:**
 - Check ComfyUI is running on port 8188 (default)
-- Verify Python 3.8+ is installed (`python --version`)
-- Check all dependencies are installed: `pip install -r requirements.txt`
+- Verify Python 3.11+ is installed (`python --version`)
+- Check all dependencies are installed: `uv sync`
 - Check server logs for specific error messages
 
 **Client can't connect:**
