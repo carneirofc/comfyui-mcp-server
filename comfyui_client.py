@@ -495,6 +495,126 @@ class ComfyUIClient:
             logger.error(f"Failed to get history: {e}")
             raise Exception(f"Failed to get history: {e}")
     
+    # ------------------------------------------------------------------
+    # Optional / feature-flagged endpoints
+    #
+    # These wrap additional ComfyUI HTTP endpoints used by the opt-in tool
+    # groups (see feature_flags.py). They are thin pass-throughs: the tool
+    # layer shapes and documents the responses.
+    # ------------------------------------------------------------------
+
+    def get_system_stats(self) -> Dict[str, Any]:
+        """GET /system_stats — hardware, VRAM/RAM, and version info."""
+        response = requests.get(f"{self.base_url}/system_stats", timeout=10)
+        response.raise_for_status()
+        return response.json()
+
+    def get_features(self) -> Dict[str, Any]:
+        """GET /features — server capability flags."""
+        response = requests.get(f"{self.base_url}/features", timeout=10)
+        response.raise_for_status()
+        return response.json()
+
+    def get_object_info(self, class_type: Optional[str] = None) -> Dict[str, Any]:
+        """GET /object_info[/{class_type}] — node schema(s).
+
+        With class_type, returns the schema for a single node type (valid enum
+        values, input/output specs). Without it, returns every node type — a
+        large payload, so prefer passing a class_type.
+        """
+        if class_type:
+            url = f"{self.base_url}/object_info/{quote(class_type, safe='')}"
+        else:
+            url = f"{self.base_url}/object_info"
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        return response.json()
+
+    def get_models(self, folder: Optional[str] = None):
+        """GET /models[/{folder}] — model folder list, or files within a folder."""
+        if folder:
+            url = f"{self.base_url}/models/{quote(folder, safe='')}"
+        else:
+            url = f"{self.base_url}/models"
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        return response.json()
+
+    def interrupt(self) -> Dict[str, Any]:
+        """POST /interrupt — stop the currently executing job (no-op if idle)."""
+        response = requests.post(f"{self.base_url}/interrupt", timeout=10)
+        response.raise_for_status()
+        return {"status_code": response.status_code}
+
+    def free(self, unload_models: bool = False, free_memory: bool = False) -> Dict[str, Any]:
+        """POST /free — unload models and/or free VRAM/RAM."""
+        payload = {"unload_models": unload_models, "free_memory": free_memory}
+        response = requests.post(f"{self.base_url}/free", json=payload, timeout=30)
+        response.raise_for_status()
+        return {"status_code": response.status_code}
+
+    def upload_image(
+        self,
+        data: bytes,
+        filename: str,
+        subfolder: str = "",
+        folder_type: str = "input",
+        overwrite: bool = False,
+    ) -> Dict[str, Any]:
+        """POST /upload/image — upload an input image for img2img/inpaint/controlnet.
+
+        Returns ComfyUI's {name, subfolder, type} which can be referenced by a
+        LoadImage node in a workflow.
+        """
+        files = {"image": (filename, data)}
+        form = {"type": folder_type, "overwrite": str(bool(overwrite)).lower()}
+        if subfolder:
+            form["subfolder"] = subfolder
+        response = requests.post(f"{self.base_url}/upload/image", files=files, data=form, timeout=120)
+        response.raise_for_status()
+        return response.json()
+
+    def upload_mask(
+        self,
+        data: bytes,
+        filename: str,
+        original_ref: Dict[str, Any],
+        subfolder: str = "",
+        folder_type: str = "input",
+        overwrite: bool = False,
+    ) -> Dict[str, Any]:
+        """POST /upload/mask — upload a mask paired with a previously uploaded image.
+
+        original_ref is the {filename, subfolder, type} of the image the mask
+        applies to (typically the result of a prior upload_image call).
+        """
+        files = {"image": (filename, data)}
+        form = {
+            "type": folder_type,
+            "overwrite": str(bool(overwrite)).lower(),
+            "original_ref": json.dumps(original_ref),
+        }
+        if subfolder:
+            form["subfolder"] = subfolder
+        response = requests.post(f"{self.base_url}/upload/mask", files=files, data=form, timeout=120)
+        response.raise_for_status()
+        return response.json()
+
+    def get_jobs(self, limit: int = 20, status: Optional[str] = None) -> Dict[str, Any]:
+        """GET /api/jobs — rich job ledger (status, timing, previews)."""
+        params: Dict[str, Any] = {"limit": limit}
+        if status:
+            params["status"] = status
+        response = requests.get(f"{self.base_url}/api/jobs", params=params, timeout=15)
+        response.raise_for_status()
+        return response.json()
+
+    def get_job_detail(self, job_id: str) -> Dict[str, Any]:
+        """GET /api/jobs/{id} — full job record including outputs and workflow."""
+        response = requests.get(f"{self.base_url}/api/jobs/{quote(job_id, safe='')}", timeout=15)
+        response.raise_for_status()
+        return response.json()
+
     def cancel_prompt(self, prompt_id: str) -> Dict[str, Any]:
         """Cancel a queued or running prompt.
         
