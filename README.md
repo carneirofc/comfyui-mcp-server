@@ -6,6 +6,8 @@ A lightweight MCP (Model Context Protocol) server that lets AI agents generate a
 
 You run the server, connect a client, and issue tool calls. Everything else is optional depth.
 
+> **Fork notice:** This is a fork of [joenorton/comfyui-mcp-server](https://github.com/joenorton/comfyui-mcp-server) by [@joenorton](https://github.com/joenorton) (the original author). It adds Docker packaging, a configurable bind host/port, and Docker-aware publish paths. See the [CHANGELOG](CHANGELOG.md) for what's different.
+
 ---
 
 ## Quick Start (2–3 minutes)
@@ -17,7 +19,7 @@ This proves everything is working.
 This project uses [uv](https://docs.astral.sh/uv/) for dependency and environment management.
 
 ```bash
-git clone https://github.com/joenorton/comfyui-mcp-server.git
+git clone https://github.com/carneirofc/comfyui-mcp-server.git
 cd comfyui-mcp-server
 uv sync
 ```
@@ -477,11 +479,14 @@ Issues and pull requests are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for
 
 ## Acknowledgements
 
+- [@joenorton](https://github.com/joenorton) - **original author**; this repository is a fork of [joenorton/comfyui-mcp-server](https://github.com/joenorton/comfyui-mcp-server)
 - [@venetanji](https://github.com/venetanji) - streamable-http foundation & PARAM_* system
 
 ## Maintainer
-[@joenorton](https://github.com/joenorton)
+
+- Fork: [@carneirofc](https://github.com/carneirofc)
+- Original: [@joenorton](https://github.com/joenorton)
 
 ## License
 
-Apache License 2.0
+Apache License 2.0 — Copyright 2026 Joe Norton. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

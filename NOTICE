@@ -3,3 +3,8 @@ Copyright 2026 Joe Norton
 
 This project is an independent MCP server integration for ComfyUI.
 ComfyUI is a separate project and is not affiliated with this repository.
+
+This repository is a fork of the original project by Joe Norton:
+  https://github.com/joenorton/comfyui-mcp-server
+The original work is licensed under the Apache License 2.0 and the original
+copyright and license are retained.
