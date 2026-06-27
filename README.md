@@ -47,6 +47,8 @@ The server listens at:
 http://127.0.0.1:9000/mcp
 ```
 
+The bind address and port are configurable via `COMFY_MCP_HOST` (default `127.0.0.1`) and `COMFY_MCP_PORT` (default `9000`). For example, `COMFY_MCP_PORT=9999 uv run python server.py` serves at `http://127.0.0.1:9999/mcp`.
+
 ### 4) Verify it works (no AI client required)
 
 Run the included test client:
@@ -115,6 +117,7 @@ docker run --rm `
 - `-p 9000:9000` publishes the MCP endpoint at `http://127.0.0.1:9000/mcp`.
 - `COMFYUI_URL` points the server at your ComfyUI instance. `host.docker.internal` resolves to the Docker host; the `--add-host` flag is required on **Linux** (it's automatic with Docker Desktop on macOS/Windows).
 - If ComfyUI runs in another container on the same Docker network, use that service name instead, e.g. `-e COMFYUI_URL=http://comfyui:8188` (and drop the `--add-host`).
+- To map to a different **host** port, just change the left side of `-p` (e.g. `-p 9999:9000` serves at `http://127.0.0.1:9999/mcp`). To change the **container** port, set `-e COMFY_MCP_PORT=<port>` and match the right side of `-p` (e.g. `-e COMFY_MCP_PORT=9100 -p 9100:9100`); the in-container healthcheck honors `COMFY_MCP_PORT` automatically.
 
 Then connect a client exactly as in [Use with an AI Agent](#use-with-an-ai-agent-cursor--claude--n8n) — the endpoint is identical.
 
@@ -125,6 +128,8 @@ Every environment variable from [Configuration](#configuration) works via `-e`. 
 | Variable | Default (in image) | Description |
 | --- | --- | --- |
 | `COMFYUI_URL` | `http://host.docker.internal:8188` | ComfyUI base URL |
+| `COMFY_MCP_HOST` | `0.0.0.0` | HTTP bind address. The image sets `0.0.0.0` so the published port is reachable; the bare `server.py` defaults to `127.0.0.1` |
+| `COMFY_MCP_PORT` | `9000` | HTTP transport port the server listens on inside the container |
 | `COMFY_MCP_ASSET_TTL_HOURS` | `24` | Asset registry TTL |
 | `COMFY_MCP_WORKFLOW_DIR` | `/app/workflows` | Workflow JSON directory |
 | `COMFYUI_OUTPUT_ROOT` | (auto-detected) | ComfyUI output dir — publish **source** |
