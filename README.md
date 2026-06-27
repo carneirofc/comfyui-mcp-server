@@ -127,7 +127,11 @@ Every environment variable from [Configuration](#configuration) works via `-e`. 
 | `COMFYUI_URL` | `http://host.docker.internal:8188` | ComfyUI base URL |
 | `COMFY_MCP_ASSET_TTL_HOURS` | `24` | Asset registry TTL |
 | `COMFY_MCP_WORKFLOW_DIR` | `/app/workflows` | Workflow JSON directory |
-| `COMFYUI_OUTPUT_ROOT` | (auto-detected) | ComfyUI output dir, used by the publish tools |
+| `COMFYUI_OUTPUT_ROOT` | (auto-detected) | ComfyUI output dir — publish **source** |
+| `COMFY_MCP_PROJECT_ROOT` | (auto-detected) | Your web project root — publish **target** base (`<root>/public/gen`, etc.) |
+| `COMFY_MCP_PUBLISH_ROOT` | (derived) | Exact publish dir; overrides the `…/public/gen` default |
+
+> **Publishing in Docker requires setting the path env vars.** Outside Docker the publish tools auto-detect these from the working directory and a list of host-shaped candidate paths — neither of which is meaningful inside a container. Mount your host directories and point the server at the **container** paths with `COMFYUI_OUTPUT_ROOT` (source) and `COMFY_MCP_PROJECT_ROOT` / `COMFY_MCP_PUBLISH_ROOT` (target). The `dest_url` returned by `publish_asset` (e.g. `/gen/hero.webp`) is a web path and is unaffected by where you mount.
 
 Add custom workflows without rebuilding by mounting a directory over `/app/workflows`. Use the host path style for your shell:
 
@@ -141,7 +145,7 @@ Add custom workflows without rebuilding by mounting a directory over `/app/workf
 -v C:\path\to\workflows:/app/workflows:ro
 ```
 
-To use the publish tools, mount your ComfyUI output (and project) directories and point the server at them:
+To use the publish tools, mount your ComfyUI output and project directories, then point the server at the **container** paths. The output is mounted read-only (publish only reads it); the project is writable (publish writes into it).
 
 **Bash (Linux / macOS):**
 
@@ -150,6 +154,7 @@ docker run --rm \
   -p 9000:9000 \
   -e COMFYUI_URL=http://host.docker.internal:8188 \
   -e COMFYUI_OUTPUT_ROOT=/comfy/output \
+  -e COMFY_MCP_PROJECT_ROOT=/project \
   -v /path/to/ComfyUI/output:/comfy/output:ro \
   -v /path/to/your/project:/project \
   --add-host=host.docker.internal:host-gateway \
@@ -163,10 +168,13 @@ docker run --rm `
   -p 9000:9000 `
   -e COMFYUI_URL=http://host.docker.internal:8188 `
   -e COMFYUI_OUTPUT_ROOT=/comfy/output `
+  -e COMFY_MCP_PROJECT_ROOT=/project `
   -v C:\path\to\ComfyUI\output:/comfy/output:ro `
   -v C:\path\to\your\project:/project `
   ghcr.io/carneirofc/comfyui-mcp-server:latest
 ```
+
+With `COMFY_MCP_PROJECT_ROOT=/project`, published files land in `/project/public/gen` (i.e. your host project's `public/gen`). To target a different directory, set `COMFY_MCP_PUBLISH_ROOT` to an exact container path instead.
 
 ### Build locally
 
