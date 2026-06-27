@@ -10,10 +10,13 @@ Thank you for your interest in contributing to ComfyUI MCP Server!
    cd comfyui-mcp-server
    ```
 
-2. **Install dependencies:**
+2. **Install dependencies** (this project uses [uv](https://docs.astral.sh/uv/)):
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
+   This creates a virtual environment and installs runtime + dev dependencies
+   from `pyproject.toml` / `uv.lock`. Prefix commands with `uv run` to run them
+   inside that environment.
 
 3. **Start ComfyUI** (if not already running):
    ```bash
@@ -23,12 +26,17 @@ Thank you for your interest in contributing to ComfyUI MCP Server!
 
 4. **Run the server:**
    ```bash
-   python server.py
+   uv run python server.py
    ```
 
 5. **Test your changes:**
    ```bash
-   python test_client.py
+   uv run python test_client.py
+   ```
+
+6. **Run the test suite:**
+   ```bash
+   uv run pytest tests/ -v
    ```
 
 ## Code Style

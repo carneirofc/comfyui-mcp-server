@@ -25,7 +25,7 @@ Cursor connects to a running server via HTTP. This allows the server to run inde
 **Steps:**
 1. Start the MCP server manually:
    ```bash
-   python server.py
+   uv run python server.py
    ```
    The server will start on `http://127.0.0.1:9000/mcp`
 
@@ -42,9 +42,13 @@ Cursor automatically starts and manages the server process. No manual server sta
 {
   "mcpServers": {
     "comfyui-mcp-server": {
-      "command": "python",
+      "command": "uv",
       "args": [
-        "/path/to/comfyui-mcp-server/server.py",
+        "run",
+        "--directory",
+        "/path/to/comfyui-mcp-server",
+        "python",
+        "server.py",
         "--stdio"
       ],
       "env": {
@@ -56,10 +60,10 @@ Cursor automatically starts and manages the server process. No manual server sta
 ```
 
 **Important Notes:**
-- **Update the Path**: Replace `/path/to/comfyui-mcp-server/server.py` with your actual absolute path:
-  - Windows: `"E:\\dev\\comfyui-mcp-server\\server.py"`
-  - Mac/Linux: `"/path/to/comfyui-mcp-server/server.py"`
-- **Python Command**: You may need to use `python3` on Mac/Linux, or the full path to your Python executable
+- **Update the Path**: Replace `/path/to/comfyui-mcp-server` with your actual absolute path to the repo:
+  - Windows: `"E:\\dev\\comfyui-mcp-server"`
+  - Mac/Linux: `"/path/to/comfyui-mcp-server"`
+- **`uv run --directory`**: This runs the server inside the project's uv-managed environment, syncing dependencies automatically. Make sure [uv](https://docs.astral.sh/uv/) is installed and on your `PATH` (or use uv's absolute path).
 - **ComfyUI URL**: The `COMFYUI_URL` environment variable should point to your ComfyUI instance (default: `http://localhost:8188`)
 
 **Steps:**
@@ -92,21 +96,21 @@ Once connected, you'll have access to all MCP tools. See [README.md](README.md#a
 
 ### Server Not Connecting (HTTP-based)
 
-1. **Check Server is Running**: Make sure you've started the server with `python server.py`
+1. **Check Server is Running**: Make sure you've started the server with `uv run python server.py`
 2. **Check Port**: Verify the server is listening on `http://127.0.0.1:9000/mcp`
 3. **Check ComfyUI**: Ensure ComfyUI is running on the configured port (default: 8188)
 
 ### Server Not Starting (Command-based)
 
-1. **Check Python Path**: Make sure `python` in the command is the correct Python interpreter
-   - You might need to use `python3` on Mac/Linux
-   - Or use the full path: `"C:\\Python\\python.exe"` (Windows) or `"/usr/bin/python3"` (Mac/Linux)
+1. **Check uv Path**: Make sure `uv` in the command can be found
+   - Use the full path to the `uv` executable if it isn't on your `PATH`: e.g. `"C:\\Users\\<user>\\.local\\bin\\uv.exe"` (Windows) or `"/usr/local/bin/uv"` (Mac/Linux)
+   - Verify `uv --version` runs from a terminal first
 
 2. **Check Server Path**: Verify the path to `server.py` is correct and absolute
 
 3. **Check Dependencies**: Ensure all Python dependencies are installed:
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 4. **Check ComfyUI**: Make sure ComfyUI is running on the configured port (default: 8188)

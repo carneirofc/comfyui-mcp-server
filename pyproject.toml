@@ -1,0 +1,23 @@
+[project]
+name = "comfyui-mcp-server"
+version = "0.1.0"
+description = "A lightweight MCP server that lets AI agents generate and iteratively refine images, audio, and video using a local ComfyUI instance."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "requests>=2.31.0",
+    "mcp>=0.9.0",
+    "Pillow>=10.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+]
+
+[tool.uv]
+# Flat module layout (modules live at the repo root, not in a package dir),
+# so this project is run, not built/installed. Treat it as a non-package project:
+# `uv sync` only installs dependencies into the environment.
+package = false

@@ -7,36 +7,35 @@ This directory contains the test suite for ComfyUI MCP Server.
 ### Install Test Dependencies
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ### Run All Tests
 
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ### Run Specific Test Files
 
 ```bash
 # Basic smoke tests
-pytest tests/test_basic.py -v
+uv run pytest tests/test_basic.py -v
 
 # Asset registry tests
-pytest tests/test_asset_registry.py -v
+uv run pytest tests/test_asset_registry.py -v
 
 # Job tools tests
-pytest tests/test_job_tools.py -v
+uv run pytest tests/test_job_tools.py -v
 
 # Edge case tests
-pytest tests/test_edge_cases.py -v
+uv run pytest tests/test_edge_cases.py -v
 ```
 
 ### Run with Coverage
 
 ```bash
-pip install pytest-cov
-pytest tests/ --cov=. --cov-report=html
+uv run --with pytest-cov pytest tests/ --cov=. --cov-report=html
 ```
 
 ## Test Structure
@@ -91,10 +90,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      - run: pip install -r requirements.txt
-      - run: pytest tests/ -v --ignore=tests/test_integration.py
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run pytest tests/ -v --ignore=tests/test_integration.py
 ```

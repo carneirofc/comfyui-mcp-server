@@ -25,28 +25,21 @@ The publish assets feature allows you to safely copy ComfyUI-generated assets to
 **From project root:**
 ```bash
 # Run all publish tests
-pytest tests/test_publish.py -v
+uv run pytest tests/test_publish.py -v
 
 # Run specific test class
-pytest tests/test_publish.py::TestPublishManager -v
+uv run pytest tests/test_publish.py::TestPublishManager -v
 
 # Run with coverage
-pytest tests/test_publish.py --cov=managers.publish_manager --cov=tools.publish
+uv run --with pytest-cov pytest tests/test_publish.py --cov=managers.publish_manager --cov=tools.publish
 ```
 
-**Note:** Don't run `python test_publish.py` directly - use `pytest` from the project root.
+**Note:** Don't run `python test_publish.py` directly - use `uv run pytest` from the project root.
 
 **Troubleshooting pytest errors:**
 
-- **`ImportError: cannot import name 'FixtureDef'`** → Use `python -m pytest` instead of `pytest`
 - **Permission errors on Windows** → Clean temp dir: `rmdir /s C:\Users\<user>\AppData\Local\Temp\pytest-of-<user>`
-- **Plugin conflicts** → Use virtual environment:
-  ```bash
-  python -m venv venv
-  venv\Scripts\activate  # Windows
-  pip install -r requirements.txt
-  python -m pytest tests/test_publish.py -v
-  ```
+- **Stale environment** → Re-sync dependencies: `uv sync`
 
 ## Quick Setup
 
@@ -92,7 +85,7 @@ Make sure ComfyUI is running on `http://localhost:8188` (or your configured URL)
 From the repository root:
 
 ```bash
-python server.py --stdio
+uv run python server.py --stdio
 ```
 
 The publish tools are always registered - no environment variables needed!
