@@ -137,8 +137,14 @@ Every environment variable from [Configuration](#configuration) works via `-e`. 
 | `COMFYUI_OUTPUT_ROOT` | (auto-detected) | ComfyUI output dir — publish **source** |
 | `COMFY_MCP_PROJECT_ROOT` | (auto-detected) | Your web project root — publish **target** base (`<root>/public/gen`, etc.) |
 | `COMFY_MCP_PUBLISH_ROOT` | (derived) | Exact publish dir; overrides the `…/public/gen` default |
+| `COMFY_MCP_PUBLISH_BACKEND` | `local` | Set to `s3` to publish to S3/MinIO/RustFS instead of disk (see [Publish to S3](#publish-to-s3-rustfs--minio--aws)) |
+| `COMFY_MCP_FEATURES` | (none) | Comma list of optional tool groups to enable, or `all` (see [Optional Tool Groups](#optional-tool-groups-feature-flags)) |
 
-> **Publishing in Docker requires setting the path env vars.** Outside Docker the publish tools auto-detect these from the working directory and a list of host-shaped candidate paths — neither of which is meaningful inside a container. Mount your host directories and point the server at the **container** paths with `COMFYUI_OUTPUT_ROOT` (source) and `COMFY_MCP_PROJECT_ROOT` / `COMFY_MCP_PUBLISH_ROOT` (target). The `dest_url` returned by `publish_asset` (e.g. `/gen/hero.webp`) is a web path and is unaffected by where you mount.
+> The published image **bundles `boto3`**, so the S3 publish backend works
+> without any extra install — just set `COMFY_MCP_PUBLISH_BACKEND=s3` and the
+> `COMFY_MCP_S3_*` variables.
+
+> **Publishing to a local directory in Docker requires setting the path env vars.** Outside Docker the publish tools auto-detect these from the working directory and a list of host-shaped candidate paths — neither of which is meaningful inside a container. Mount your host directories and point the server at the **container** paths with `COMFYUI_OUTPUT_ROOT` (source) and `COMFY_MCP_PROJECT_ROOT` / `COMFY_MCP_PUBLISH_ROOT` (target). The `dest_url` returned by `publish_asset` (e.g. `/gen/hero.webp`) is a web path and is unaffected by where you mount.
 
 Add custom workflows without rebuilding by mounting a directory over `/app/workflows`. Use the host path style for your shell:
 
@@ -403,6 +409,47 @@ the server reads the rendered file locally, then uploads it.
 > **Note:** the S3 source is still the local ComfyUI output directory, so
 > `COMFYUI_OUTPUT_ROOT` (and, under Docker, mounting it) is required exactly as
 > for local publishing. Only the publish *target* moves to S3.
+
+**Using S3 from Docker.** The published image already includes `boto3`, so you
+only pass the env vars (and mount the ComfyUI output as the publish source — no
+project/`public/gen` mount is needed since the target is the bucket):
+
+```bash
+docker run --rm \
+  -p 9000:9000 \
+  -e COMFYUI_URL=http://host.docker.internal:8188 \
+  -e COMFYUI_OUTPUT_ROOT=/comfy/output \
+  -e COMFY_MCP_PUBLISH_BACKEND=s3 \
+  -e COMFY_MCP_S3_ENDPOINT_URL=http://host.docker.internal:9000 \
+  -e COMFY_MCP_S3_BUCKET=comfy-assets \
+  -e COMFY_MCP_S3_ACCESS_KEY_ID=minioadmin \
+  -e COMFY_MCP_S3_SECRET_ACCESS_KEY=minioadmin \
+  -e COMFY_MCP_S3_PUBLIC_BASE_URL=http://localhost:9000/comfy-assets \
+  -v /path/to/ComfyUI/output:/comfy/output:ro \
+  --add-host=host.docker.internal:host-gateway \
+  ghcr.io/carneirofc/comfyui-mcp-server:latest
+```
+
+```powershell
+# PowerShell (Windows)
+docker run --rm `
+  -p 9000:9000 `
+  -e COMFYUI_URL=http://host.docker.internal:8188 `
+  -e COMFYUI_OUTPUT_ROOT=/comfy/output `
+  -e COMFY_MCP_PUBLISH_BACKEND=s3 `
+  -e COMFY_MCP_S3_ENDPOINT_URL=http://host.docker.internal:9000 `
+  -e COMFY_MCP_S3_BUCKET=comfy-assets `
+  -e COMFY_MCP_S3_ACCESS_KEY_ID=minioadmin `
+  -e COMFY_MCP_S3_SECRET_ACCESS_KEY=minioadmin `
+  -e COMFY_MCP_S3_PUBLIC_BASE_URL=http://localhost:9000/comfy-assets `
+  -v C:\path\to\ComfyUI\output:/comfy/output:ro `
+  ghcr.io/carneirofc/comfyui-mcp-server:latest
+```
+
+> If your S3 server (e.g. MinIO/RustFS) also runs on the host at port 9000,
+> reach it from the container via `host.docker.internal:9000` as shown. The
+> `COMFY_MCP_S3_PUBLIC_BASE_URL` is the URL **clients** use to fetch the asset,
+> so it points at how the bucket is reachable from outside the container.
 
 ## Custom Workflows
 
