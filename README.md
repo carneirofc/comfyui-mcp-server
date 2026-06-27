@@ -354,6 +354,56 @@ Example agent conversation flow:
 
 See [docs/HOW_TO_TEST_PUBLISH.md](docs/HOW_TO_TEST_PUBLISH.md) for detailed usage and testing instructions.
 
+### Publish to S3 (RustFS / MinIO / AWS)
+
+By default `publish_asset` writes to a local project directory. You can instead
+publish to any S3-compatible object store — including self-hosted **RustFS** and
+**MinIO** — by setting `COMFY_MCP_PUBLISH_BACKEND=s3`. The publish tools behave
+identically (same args, same compression ladder, same manifest); only the
+destination changes. `dest_url` becomes the object's browser URL and `dest_path`
+becomes its `s3://bucket/key` URI.
+
+The S3 backend needs `boto3`, which is an optional dependency:
+
+```bash
+uv sync --group s3
+```
+
+Configure it with these environment variables:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `COMFY_MCP_PUBLISH_BACKEND` | `local` | Set to `s3` to upload instead of writing locally |
+| `COMFY_MCP_S3_BUCKET` | — | **Required.** Target bucket name |
+| `COMFY_MCP_S3_ENDPOINT_URL` | (AWS) | S3 endpoint, e.g. `http://localhost:9000` for RustFS/MinIO. Omit for AWS |
+| `COMFY_MCP_S3_REGION` | `us-east-1` | Region |
+| `COMFY_MCP_S3_ACCESS_KEY_ID` | `AWS_ACCESS_KEY_ID` | Access key (falls back to the standard AWS var) |
+| `COMFY_MCP_S3_SECRET_ACCESS_KEY` | `AWS_SECRET_ACCESS_KEY` | Secret key (falls back to the standard AWS var) |
+| `COMFY_MCP_S3_PREFIX` | `gen/` | Key prefix for published objects (and `manifest.json`) |
+| `COMFY_MCP_S3_PUBLIC_BASE_URL` | (derived) | Base URL for `dest_url` (e.g. a CDN in front of the bucket) |
+| `COMFY_MCP_S3_FORCE_PATH_STYLE` | `true` | Path-style addressing — **required for RustFS/MinIO** |
+| `COMFY_MCP_S3_ACL` | (unset) | Optional object ACL, e.g. `public-read` (many S3-compatible servers ignore ACLs) |
+
+**Example — publish to a local RustFS/MinIO instance:**
+
+```bash
+export COMFY_MCP_PUBLISH_BACKEND=s3
+export COMFY_MCP_S3_ENDPOINT_URL=http://localhost:9000
+export COMFY_MCP_S3_BUCKET=comfy-assets
+export COMFY_MCP_S3_ACCESS_KEY_ID=minioadmin
+export COMFY_MCP_S3_SECRET_ACCESS_KEY=minioadmin
+export COMFY_MCP_S3_PUBLIC_BASE_URL=http://localhost:9000/comfy-assets
+uv run python server.py
+```
+
+Call `get_publish_info()` to confirm the active backend (`"backend": "s3"`) and
+that the bucket is reachable. The `COMFYUI_OUTPUT_ROOT` source still applies —
+the server reads the rendered file locally, then uploads it.
+
+> **Note:** the S3 source is still the local ComfyUI output directory, so
+> `COMFYUI_OUTPUT_ROOT` (and, under Docker, mounting it) is required exactly as
+> for local publishing. Only the publish *target* moves to S3.
+
 ## Custom Workflows
 
 Add custom workflows by placing JSON files in the `workflows/` directory. Workflows are automatically discovered and exposed as MCP tools.
@@ -381,6 +431,39 @@ Use `PARAM_*` placeholders in workflow JSON to expose parameters:
 The tool name is derived from the filename (e.g., `my_workflow.json` → `my_workflow` tool).
 
 ---
+
+## Optional Tool Groups (Feature Flags)
+
+To keep the tool list (and the LLM's context) lean, the server registers only a
+**core** set of tools by default. Additional capabilities are grouped and are
+**off unless you opt in** via the `COMFY_MCP_FEATURES` environment variable.
+
+```bash
+# Enable specific groups (comma or space separated)
+COMFY_MCP_FEATURES=models,system uv run python server.py
+
+# Enable everything
+COMFY_MCP_FEATURES=all uv run python server.py
+
+# Default — none of the optional groups
+uv run python server.py
+```
+
+| Group | Adds tools | Useful for |
+| --- | --- | --- |
+| `models` | `list_model_folders`, `list_models_in_folder`, `list_embeddings` | Discovering loras, vae, controlnet, upscalers, embeddings (not just checkpoints) |
+| `nodes` | `get_node_info`, `list_samplers`, `list_schedulers` | Reading a node's valid parameters/enums before building a workflow |
+| `upload` | `upload_image`, `upload_mask` | Providing input images for img2img / inpaint / ControlNet |
+| `system` | `get_system_stats`, `get_capabilities`, `interrupt_job`, `free_memory` | Health/VRAM checks and runtime control (stop in-flight job, unload models) |
+| `jobs_api` | `list_jobs`, `get_job_detail` | A richer job ledger via ComfyUI's `/api/jobs` (status, timing, previews) |
+
+Unknown group names are ignored with a warning. The enabled groups are logged at
+startup. Changing the flag requires a server restart (it controls which tools are
+registered).
+
+> The core tools — generation, `view_image`, `regenerate`, job polling
+> (`get_job`, `get_queue_status`, `cancel_job`), `list_assets`, configuration,
+> workflows, and publishing — are always available regardless of this setting.
 
 ## Configuration
 
