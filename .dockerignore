@@ -1,0 +1,34 @@
+# Keep the build context tiny and avoid leaking local/dev artifacts into the image.
+
+# VCS / CI
+.git
+.github
+.gitignore
+
+# Local virtualenvs / caches
+.venv
+venv
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Editor / tooling
+.cursor
+.vscode
+.idea
+.python-version
+
+# Tests and docs (not needed at runtime)
+tests
+test_client.py
+docs
+
+# Misc
+archive/
+*.md
+!README.md
+.mcp.json
+mcp.json
