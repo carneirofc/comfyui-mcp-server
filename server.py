@@ -40,8 +40,15 @@ COMFYUI_MAX_RETRIES = 5  # Number of retry attempts
 COMFYUI_INITIAL_DELAY = 2  # Initial delay in seconds
 COMFYUI_MAX_DELAY = 16  # Maximum delay in seconds
 
-# Publish configuration (optional env var for COMFYUI_OUTPUT_ROOT only)
+# Publish configuration (optional env vars)
+# COMFYUI_OUTPUT_ROOT     -> where ComfyUI writes renders (publish source)
+# COMFY_MCP_PROJECT_ROOT  -> your web project root (publish target base)
+# COMFY_MCP_PUBLISH_ROOT  -> exact publish dir; overrides project_root/<public|static|assets>/gen
+# Setting these explicitly is the recommended way to run under Docker, where
+# the auto-detection (cwd / host-shaped candidate paths) does not apply.
 COMFYUI_OUTPUT_ROOT = os.getenv("COMFYUI_OUTPUT_ROOT")
+PUBLISH_PROJECT_ROOT = os.getenv("COMFY_MCP_PROJECT_ROOT")
+PUBLISH_ROOT = os.getenv("COMFY_MCP_PUBLISH_ROOT")
 
 
 def print_startup_banner():
@@ -139,6 +146,8 @@ asset_registry = AssetRegistry(ttl_hours=ASSET_TTL_HOURS, comfyui_base_url=COMFY
 # Publish manager (always initialized, uses auto-detection)
 try:
     publish_config = PublishConfig(
+        project_root=PUBLISH_PROJECT_ROOT,
+        publish_root=PUBLISH_ROOT,
         comfyui_output_root=COMFYUI_OUTPUT_ROOT,
         comfyui_url=COMFYUI_URL
     )
@@ -154,7 +163,11 @@ except Exception as e:
     # Still create a minimal manager so tools can register and return errors
     try:
         from managers.publish_manager import PublishConfig, PublishManager
-        publish_config = PublishConfig(comfyui_url=COMFYUI_URL)
+        publish_config = PublishConfig(
+            project_root=PUBLISH_PROJECT_ROOT,
+            publish_root=PUBLISH_ROOT,
+            comfyui_url=COMFYUI_URL
+        )
         publish_manager = PublishManager(publish_config)
     except Exception:
         publish_manager = None
