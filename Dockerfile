@@ -44,6 +44,12 @@ LABEL org.opencontainers.image.title="comfyui-mcp-server" \
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
+    # Bind all interfaces so the published port is reachable from the host;
+    # without this FastMCP binds 127.0.0.1 inside the container and the
+    # forwarded port resets connections.
+    COMFY_MCP_HOST="0.0.0.0" \
+    # HTTP transport port (9000 is the default; override at deploy).
+    COMFY_MCP_PORT="9000" \
     # Default to the host's ComfyUI when run via `docker run`; override at deploy.
     COMFYUI_URL="http://host.docker.internal:8188"
 
@@ -66,12 +72,15 @@ COPY --chown=app:app workflows ./workflows
 # Drop privileges.
 USER 10001:10001
 
-# Streamable-HTTP transport listens here (see server.py).
+# Streamable-HTTP transport listens here (see server.py). This is the default;
+# override the runtime port with COMFY_MCP_PORT and publish it with `-p`.
 EXPOSE 9000
 
-# Liveness: confirm the server is accepting TCP connections on its port.
+# Liveness: confirm the server accepts TCP connections on its configured port.
+# Shell form so $COMFY_MCP_PORT expands; probing the real port (not a hardcoded
+# 127.0.0.1:9000) means a misconfigured bind shows up as unhealthy.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python", "-c", "import socket,sys; s=socket.socket(); s.settimeout(3); sys.exit(0 if s.connect_ex(('127.0.0.1',9000))==0 else 1)"]
+    CMD python -c "import os,socket,sys; s=socket.socket(); s.settimeout(3); sys.exit(0 if s.connect_ex(('127.0.0.1',int(os.environ.get('COMFY_MCP_PORT','9000'))))==0 else 1)"
 
 # Exec form so the process receives signals as PID 1.
 CMD ["python", "server.py"]

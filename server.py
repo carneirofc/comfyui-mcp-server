@@ -31,6 +31,13 @@ logger = logging.getLogger("MCP_Server")
 # Configuration paths
 WORKFLOW_DIR = Path(os.getenv("COMFY_MCP_WORKFLOW_DIR", str(Path(__file__).parent / "workflows")))
 
+# HTTP transport bind address. Defaults to loopback for safe local runs; the
+# container sets COMFY_MCP_HOST=0.0.0.0 so the published port is reachable.
+COMFY_MCP_HOST = os.getenv("COMFY_MCP_HOST", "127.0.0.1")
+
+# HTTP transport port. 9000 is just the default; override with COMFY_MCP_PORT.
+COMFY_MCP_PORT = int(os.getenv("COMFY_MCP_PORT", "9000"))
+
 # Asset registry configuration
 ASSET_TTL_HOURS = int(os.getenv("COMFY_MCP_ASSET_TTL_HOURS", "24"))
 
@@ -193,13 +200,14 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         logger.info("Shutting down MCP server")
 
 
-# Initialize FastMCP with lifespan and port configuration
-# Using port 9000 for consistency with previous version
+# Initialize FastMCP with lifespan and host/port configuration
+# Host and port are configurable via COMFY_MCP_HOST / COMFY_MCP_PORT (9000 default)
 # Enable stateless_http to avoid requiring session management
 mcp = FastMCP(
     "ComfyUI_MCP_Server",
     lifespan=app_lifespan,
-    port=9000,
+    host=COMFY_MCP_HOST,
+    port=COMFY_MCP_PORT,
     stateless_http=True
 )
 
@@ -238,10 +246,10 @@ if __name__ == "__main__":
         print("[+] Server Ready".center(70))
         print("=" * 70)
         print(f"  Transport: streamable-http")
-        print(f"  Endpoint: http://127.0.0.1:9000/mcp")
+        print(f"  Endpoint: http://{COMFY_MCP_HOST}:{COMFY_MCP_PORT}/mcp")
         print(f"[+] ComfyUI verified at: {COMFYUI_URL}")
         print("=" * 70 + "\n")
-        logger.info("Starting MCP server with streamable-http transport on http://127.0.0.1:9000/mcp")
+        logger.info(f"Starting MCP server with streamable-http transport on http://{COMFY_MCP_HOST}:{COMFY_MCP_PORT}/mcp")
         logger.info(f"ComfyUI verified at: {COMFYUI_URL}")
         try:
             mcp.run(transport="streamable-http")
