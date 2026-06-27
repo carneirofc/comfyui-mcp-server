@@ -93,11 +93,22 @@ ComfyUI must be running and reachable **from inside the container**. The server 
 
 ### Run
 
+**Bash (Linux / macOS):**
+
 ```bash
 docker run --rm \
   -p 9000:9000 \
   -e COMFYUI_URL=http://host.docker.internal:8188 \
   --add-host=host.docker.internal:host-gateway \
+  ghcr.io/carneirofc/comfyui-mcp-server:latest
+```
+
+**PowerShell (Windows):**
+
+```powershell
+docker run --rm `
+  -p 9000:9000 `
+  -e COMFYUI_URL=http://host.docker.internal:8188 `
   ghcr.io/carneirofc/comfyui-mcp-server:latest
 ```
 
@@ -118,13 +129,21 @@ Every environment variable from [Configuration](#configuration) works via `-e`. 
 | `COMFY_MCP_WORKFLOW_DIR` | `/app/workflows` | Workflow JSON directory |
 | `COMFYUI_OUTPUT_ROOT` | (auto-detected) | ComfyUI output dir, used by the publish tools |
 
-Add custom workflows without rebuilding by mounting a directory over `/app/workflows`:
+Add custom workflows without rebuilding by mounting a directory over `/app/workflows`. Use the host path style for your shell:
 
 ```bash
+# Bash (Linux / macOS)
 -v /path/to/workflows:/app/workflows:ro
 ```
 
+```powershell
+# PowerShell (Windows) — use the absolute Windows path
+-v C:\path\to\workflows:/app/workflows:ro
+```
+
 To use the publish tools, mount your ComfyUI output (and project) directories and point the server at them:
+
+**Bash (Linux / macOS):**
 
 ```bash
 docker run --rm \
@@ -137,13 +156,36 @@ docker run --rm \
   ghcr.io/carneirofc/comfyui-mcp-server:latest
 ```
 
+**PowerShell (Windows):**
+
+```powershell
+docker run --rm `
+  -p 9000:9000 `
+  -e COMFYUI_URL=http://host.docker.internal:8188 `
+  -e COMFYUI_OUTPUT_ROOT=/comfy/output `
+  -v C:\path\to\ComfyUI\output:/comfy/output:ro `
+  -v C:\path\to\your\project:/project `
+  ghcr.io/carneirofc/comfyui-mcp-server:latest
+```
+
 ### Build locally
+
+**Bash (Linux / macOS):**
 
 ```bash
 docker build -t comfyui-mcp-server .
 docker run --rm -p 9000:9000 \
   -e COMFYUI_URL=http://host.docker.internal:8188 \
   --add-host=host.docker.internal:host-gateway \
+  comfyui-mcp-server
+```
+
+**PowerShell (Windows):**
+
+```powershell
+docker build -t comfyui-mcp-server .
+docker run --rm -p 9000:9000 `
+  -e COMFYUI_URL=http://host.docker.internal:8188 `
   comfyui-mcp-server
 ```
 
