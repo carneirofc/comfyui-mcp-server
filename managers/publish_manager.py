@@ -25,6 +25,15 @@ TARGET_FILENAME_REGEX = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}\.(webp|png|jpg|j
 # Manifest key validation regex: same as target_filename but no extension
 MANIFEST_KEY_REGEX = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}$')
 
+# Maps file extension -> MIME type for published assets.
+MIME_MAP = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
 
 def get_publish_config_dir() -> Path:
     """Get platform-specific config directory for publish settings.
@@ -438,32 +447,42 @@ class PublishConfig:
         project_root: Optional[Union[str, Path]] = None,
         publish_root: Optional[Union[str, Path]] = None,
         comfyui_output_root: Optional[Union[str, Path]] = None,
-        comfyui_url: str = "http://localhost:8188"
+        comfyui_url: str = "http://localhost:8188",
+        backend: str = "local",
+        s3_config: Optional[Any] = None,
     ):
         """Initialize publish configuration.
-        
+
         Args:
             project_root: Project root directory (auto-detected if None)
-            publish_root: Publish directory (auto-detected if None)
+            publish_root: Publish directory (auto-detected if None; local backend only)
             comfyui_output_root: ComfyUI outputs directory (auto-detected if None, best-effort)
             comfyui_url: ComfyUI server URL (for detection)
+            backend: Publish target backend, "local" (default) or "s3"
+            s3_config: S3Config instance (required when backend="s3")
         """
-        # Detect project root
+        self.backend = (backend or "local").lower()
+        self.s3_config = s3_config
+
+        # Detect project root (still useful for ComfyUI output auto-detection and info)
         if project_root:
             self.project_root = Path(project_root).resolve()
             self.project_root_method = "configured"
         else:
             self.project_root, self.project_root_method = detect_project_root()
-        
-        # Get publish root
-        if publish_root:
-            self.publish_root = Path(publish_root).resolve()
+
+        # Get publish root — only meaningful for the local backend. For S3 we
+        # never write to disk, so avoid creating a stray public/gen directory.
+        if self.backend == "s3":
+            self.publish_root = Path(publish_root).resolve() if publish_root else None
         else:
-            self.publish_root = get_default_publish_root(self.project_root)
-        
-        # Ensure publish_root exists
-        self.publish_root.mkdir(parents=True, exist_ok=True)
-        
+            if publish_root:
+                self.publish_root = Path(publish_root).resolve()
+            else:
+                self.publish_root = get_default_publish_root(self.project_root)
+            # Ensure publish_root exists
+            self.publish_root.mkdir(parents=True, exist_ok=True)
+
         # ComfyUI output root
         # Priority: explicit param > persistent config > auto-detection
         if comfyui_output_root:
@@ -496,7 +515,27 @@ class PublishManager:
         """
         self.config = config
         self._manifest_lock = threading.Lock()  # Process-level lock for manifest updates
-        logger.info(f"Initialized PublishManager with publish_root={config.publish_root}")
+
+        # S3 backend (lazy boto3 client); None for the local filesystem backend.
+        # If S3 is selected but unconfigured we don't raise — tools still
+        # register and ensure_ready() reports a clear "not configured" status.
+        self.s3 = None
+        if config.backend == "s3":
+            if config.s3_config:
+                from managers.storage import S3StorageBackend
+                self.s3 = S3StorageBackend(config.s3_config)
+                logger.info(
+                    f"Initialized PublishManager with S3 backend "
+                    f"(bucket={config.s3_config.bucket}, endpoint={config.s3_config.endpoint_url or 'aws'})"
+                )
+            else:
+                logger.error(
+                    "PublishManager backend='s3' but no S3 config provided; "
+                    "publishing will report not-ready until COMFY_MCP_S3_* is set."
+                )
+        else:
+            logger.info(f"Initialized PublishManager with local publish_root={config.publish_root}")
+
         if config.comfyui_output_root:
             logger.info(f"ComfyUI output root: {config.comfyui_output_root} (method: {config.comfyui_output_method})")
     
@@ -510,14 +549,31 @@ class PublishManager:
         errors = []
         warnings = []
         info = {}
-        
-        # Check publish_root is writable
-        if not os.access(self.config.publish_root, os.W_OK):
-            errors.append("PUBLISH_ROOT_NOT_WRITABLE")
-            return False, "PUBLISH_ROOT_NOT_WRITABLE", {
-                "publish_root": str(self.config.publish_root),
-                "message": f"Publish root is not writable: {self.config.publish_root}"
-            }
+
+        # Check the publish target is ready (backend-specific).
+        if self.config.backend == "s3":
+            if not self.s3:
+                return False, "S3_BACKEND_NOT_CONFIGURED", {
+                    "message": (
+                        "S3 publish backend selected but not configured. "
+                        "Set COMFY_MCP_S3_BUCKET (and COMFY_MCP_S3_ENDPOINT_URL / credentials "
+                        "for RustFS/MinIO)."
+                    )
+                }
+            ok, err = self.s3.ensure_ready()
+            if not ok:
+                return False, "S3_BACKEND_NOT_READY", {
+                    "message": f"S3 backend not ready: {err}",
+                    "s3": self.s3.describe(),
+                }
+        else:
+            # Check publish_root is writable
+            if not os.access(self.config.publish_root, os.W_OK):
+                errors.append("PUBLISH_ROOT_NOT_WRITABLE")
+                return False, "PUBLISH_ROOT_NOT_WRITABLE", {
+                    "publish_root": str(self.config.publish_root),
+                    "message": f"Publish root is not writable: {self.config.publish_root}"
+                }
         
         # Check ComfyUI output root
         if not self.config.comfyui_output_root:
@@ -887,6 +943,118 @@ class PublishManager:
                     pass
             raise
     
+    def store_asset(
+        self,
+        source_path: Path,
+        target_filename: str,
+        overwrite: bool = True,
+        asset_id: Optional[str] = None,
+        web_optimize: bool = False,
+        max_bytes: int = 600_000,
+    ) -> Dict[str, Any]:
+        """Publish an asset to the configured backend (local disk or S3).
+
+        Backend-agnostic entry point used by the publish tool. For the local
+        backend this resolves a safe target path and delegates to copy_asset;
+        for S3 it produces the bytes and uploads them.
+
+        Returns the same shape regardless of backend:
+            dest_url, dest_path, bytes_size, mime_type, compression_info
+        For S3, dest_path is the ``s3://bucket/key`` URI and dest_url is the
+        browser-facing object URL.
+        """
+        if self.config.backend == "s3":
+            return self._store_asset_s3(
+                source_path=source_path,
+                target_filename=target_filename,
+                overwrite=overwrite,
+                asset_id=asset_id,
+                web_optimize=web_optimize,
+                max_bytes=max_bytes,
+            )
+
+        target_path = self.resolve_target_path(target_filename)
+        return self.copy_asset(
+            source_path=source_path,
+            target_path=target_path,
+            overwrite=overwrite,
+            asset_id=asset_id,
+            target_filename=target_filename,
+            web_optimize=web_optimize,
+            max_bytes=max_bytes,
+        )
+
+    def _produce_asset_bytes(
+        self,
+        source_path: Path,
+        web_optimize: bool,
+        max_bytes: int,
+    ) -> Tuple[bytes, Dict[str, Any]]:
+        """Produce the bytes to publish, optionally web-optimizing images.
+
+        Mirrors copy_asset's compress-or-copy decision but returns bytes in
+        memory (for upload) instead of writing to disk.
+        """
+        source_ext = source_path.suffix.lower()
+        is_image = source_ext in (".png", ".jpg", ".jpeg", ".webp", ".gif")
+
+        if is_image and web_optimize and PIL_AVAILABLE:
+            compressed_bytes, compression_info = self._compress_image(
+                source_path, "webp", max_bytes
+            )
+            return compressed_bytes, compression_info
+
+        with open(source_path, "rb") as f:
+            data = f.read()
+        compression_info = {
+            "compressed": False,
+            "original_size": len(data),
+            "final_size": len(data),
+        }
+        return data, compression_info
+
+    def _store_asset_s3(
+        self,
+        source_path: Path,
+        target_filename: str,
+        overwrite: bool,
+        asset_id: Optional[str],
+        web_optimize: bool,
+        max_bytes: int,
+    ) -> Dict[str, Any]:
+        """Upload a published asset to the S3-compatible backend."""
+        # Defense in depth: validate filename even though the tool already does.
+        if not validate_target_filename(target_filename):
+            raise ValueError(
+                f"Invalid target_filename: '{target_filename}'. "
+                f"Must match regex: ^[a-z0-9][a-z0-9._-]{{0,63}}\\.(webp|png|jpg|jpeg)$"
+            )
+
+        data, compression_info = self._produce_asset_bytes(source_path, web_optimize, max_bytes)
+
+        # MIME derives from the target extension, matching the local backend.
+        ext = Path(target_filename).suffix.lower()
+        mime_type = MIME_MAP.get(ext, "application/octet-stream")
+
+        put = self.s3.put_bytes(target_filename, data, mime_type, overwrite=overwrite)
+
+        logger.info(f"Published asset {asset_id} to {put['uri']} ({len(data)} bytes)")
+        self._log_publish(
+            asset_id=asset_id,
+            target_filename=target_filename,
+            source_path=str(source_path),
+            dest_path=put["uri"],
+            bytes_size=len(data),
+        )
+
+        return {
+            "dest_path": put["uri"],
+            "dest_url": put["url"],
+            "bytes_size": len(data),
+            "mime_type": mime_type,
+            "compression_info": compression_info,
+        }
+
     def update_manifest(self, manifest_key: str, filename: str):
         """Update manifest.json with published asset.
         
@@ -902,7 +1070,21 @@ class PublishManager:
                 f"Invalid manifest_key: '{manifest_key}'. "
                 f"Must match regex: ^[a-z0-9][a-z0-9._-]{{0,63}}$"
             )
-        
+
+        # S3 backend: read-modify-write the manifest object under the prefix.
+        if self.config.backend == "s3":
+            with self._manifest_lock:
+                manifest = self.s3.get_json("manifest.json")
+                manifest[manifest_key] = filename
+                self.s3.put_bytes(
+                    "manifest.json",
+                    json.dumps(manifest, indent=2).encode("utf-8"),
+                    "application/json",
+                    overwrite=True,
+                )
+                logger.debug(f"Updated S3 manifest: {manifest_key} -> {filename}")
+            return
+
         manifest_path = self.config.publish_root / "manifest.json"
         
         # Process-level lock for atomicity
@@ -954,8 +1136,6 @@ class PublishManager:
             dest_path: Destination file path
             bytes_size: File size in bytes
         """
-        log_path = self.config.publish_root / "publish_log.jsonl"
-        
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "asset_id": asset_id,
@@ -964,7 +1144,15 @@ class PublishManager:
             "dest_path": dest_path,
             "bytes_size": bytes_size
         }
-        
+
+        # The local jsonl log lives under publish_root, which the S3 backend
+        # does not have. Fall back to the application log there.
+        if not self.config.publish_root:
+            logger.info(f"Published (s3): {json.dumps(log_entry)}")
+            return
+
+        log_path = self.config.publish_root / "publish_log.jsonl"
+
         try:
             # Append to log file (create if doesn't exist)
             with open(log_path, "a", encoding="utf-8") as f:
@@ -991,16 +1179,23 @@ class PublishManager:
         config_file = get_publish_config_file()
         persistent_config = load_publish_config()
         
+        # publish_root is local-backend only; the S3 backend reports under "s3".
+        if self.config.publish_root:
+            publish_root_info = {
+                "path": str(self.config.publish_root),
+                "exists": self.config.publish_root.exists(),
+                "writable": os.access(self.config.publish_root, os.W_OK) if self.config.publish_root.exists() else False
+            }
+        else:
+            publish_root_info = None
+
         result = {
+            "backend": self.config.backend,
             "project_root": {
                 "path": str(self.config.project_root),
                 "detection_method": self.config.project_root_method
             },
-            "publish_root": {
-                "path": str(self.config.publish_root),
-                "exists": self.config.publish_root.exists(),
-                "writable": os.access(self.config.publish_root, os.W_OK) if self.config.publish_root.exists() else False
-            },
+            "publish_root": publish_root_info,
             "comfyui_output_root": {
                 "path": str(self.config.comfyui_output_root) if self.config.comfyui_output_root else None,
                 "exists": self.config.comfyui_output_root.exists() if self.config.comfyui_output_root else False,
@@ -1012,7 +1207,11 @@ class PublishManager:
             "status": "ready" if is_ready else ("needs_comfyui_root" if error_code == "COMFYUI_OUTPUT_ROOT_NOT_FOUND" else "error"),
             "message": error_info.get("message", "Ready to publish") if error_info else "Ready to publish"
         }
-        
+
+        # Surface S3 backend details (non-secret) when active.
+        if self.config.backend == "s3" and self.s3:
+            result["s3"] = self.s3.describe()
+
         if error_info and "warnings" in error_info:
             result["warnings"] = error_info["warnings"]
         elif not is_ready and error_info:

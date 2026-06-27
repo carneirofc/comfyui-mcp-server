@@ -1,0 +1,95 @@
+# Simple RustFS + ComfyUI MCP Server stack.
+#
+# Brings up a self-hosted, S3-compatible RustFS object store, creates a
+# public-read bucket, and starts the MCP server configured to publish generated
+# assets into that bucket.
+#
+# Prerequisites:
+#   - ComfyUI running on the host at port 8188.
+#   - Edit the `comfyui-output` bind mount below to point at your ComfyUI
+#     output directory (the publish source).
+#
+# Run:
+#   docker compose -f examples/docker-compose.rustfs.yml up
+#
+# Endpoints:
+#   - MCP server : http://127.0.0.1:9100/mcp   (point your client here)
+#   - RustFS S3  : http://127.0.0.1:9000
+#   - RustFS UI  : http://127.0.0.1:9001       (login rustfsadmin / rustfsadmin)
+
+name: comfyui-mcp-rustfs
+
+services:
+  # ---- S3-compatible object store ----------------------------------------
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: rustfs
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web console
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      # Demo credentials — change these before exposing beyond localhost.
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+    volumes:
+      - rustfs-data:/data
+
+  # ---- One-shot: create the bucket and make it public-read ----------------
+  # Uses the MinIO client (mc), which works against any S3-compatible store.
+  createbucket:
+    image: minio/mc
+    depends_on:
+      - rustfs
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set rfs http://rustfs:9000 rustfsadmin rustfsadmin; do
+        echo 'waiting for rustfs...'; sleep 2;
+      done;
+      mc mb -p rfs/comfy-assets || true;
+      mc anonymous set download rfs/comfy-assets || true;
+      echo 'bucket ready';
+      "
+    restart: "no"
+
+  # ---- The MCP server, publishing to RustFS -------------------------------
+  comfyui-mcp-server:
+    image: ghcr.io/carneirofc/comfyui-mcp-server:latest
+    # To build from this checkout instead of pulling, comment `image:` above
+    # and uncomment:
+    # build:
+    #   context: ..
+    container_name: comfyui-mcp-server
+    depends_on:
+      createbucket:
+        condition: service_completed_successfully
+    ports:
+      - "9100:9100" # MCP endpoint -> http://127.0.0.1:9100/mcp
+    environment:
+      COMFY_MCP_PORT: "9100"
+      # ComfyUI runs on the host:
+      COMFYUI_URL: http://host.docker.internal:8188
+      COMFYUI_OUTPUT_ROOT: /comfy/output
+      # Publish to RustFS over the compose network:
+      COMFY_MCP_PUBLISH_BACKEND: s3
+      COMFY_MCP_S3_ENDPOINT_URL: http://rustfs:9000
+      COMFY_MCP_S3_BUCKET: comfy-assets
+      COMFY_MCP_S3_ACCESS_KEY_ID: rustfsadmin
+      COMFY_MCP_S3_SECRET_ACCESS_KEY: rustfsadmin
+      # URL clients (on the host) use to fetch published assets:
+      COMFY_MCP_S3_PUBLIC_BASE_URL: http://localhost:9000/comfy-assets
+      # Expose all optional tool groups (drop/narrow for a leaner tool list):
+      COMFY_MCP_FEATURES: all
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # EDIT: point this at your ComfyUI output directory (read-only).
+      - /path/to/ComfyUI/output:/comfy/output:ro
+
+volumes:
+  rustfs-data:

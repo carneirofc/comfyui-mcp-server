@@ -26,9 +26,14 @@ WORKDIR /app
 # Install ONLY dependencies first so this layer is cached until the lockfile
 # changes. The project itself is a non-package (package = false), so there is
 # nothing else to install — deps land in /app/.venv.
+#
+# --all-groups installs every optional dependency group (currently `s3`, which
+# bundles boto3) so the image is feature-complete: every backend and tool group
+# works out of the box, gated only by runtime env vars. --no-dev still excludes
+# test-only deps. New optional groups are picked up automatically.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-dev --all-groups --no-install-project
 
 ############################
 # Stage 2 — runtime
@@ -63,7 +68,7 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 
 # Application source (only what the server needs at runtime).
-COPY --chown=app:app server.py comfyui_client.py asset_processor.py ./
+COPY --chown=app:app server.py comfyui_client.py asset_processor.py feature_flags.py ./
 COPY --chown=app:app managers ./managers
 COPY --chown=app:app models ./models
 COPY --chown=app:app tools ./tools

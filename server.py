@@ -13,6 +13,7 @@ import requests
 from mcp.server.fastmcp import FastMCP
 
 from comfyui_client import ComfyUIClient
+from feature_flags import KNOWN_FEATURES, parse_features
 from managers.asset_registry import AssetRegistry
 from managers.defaults_manager import DefaultsManager
 from managers.publish_manager import PublishConfig, PublishManager
@@ -21,7 +22,12 @@ from tools.asset import register_asset_tools
 from tools.configuration import register_configuration_tools
 from tools.generation import register_workflow_generation_tools, register_regenerate_tool
 from tools.job import register_job_tools
+from tools.jobs_api import register_jobs_api_tools
+from tools.models import register_model_tools
+from tools.nodes import register_node_tools
 from tools.publish import register_publish_tools
+from tools.system import register_system_tools
+from tools.upload import register_upload_tools
 from tools.workflow import register_workflow_tools
 
 # Configure logging
@@ -56,6 +62,15 @@ COMFYUI_MAX_DELAY = 16  # Maximum delay in seconds
 COMFYUI_OUTPUT_ROOT = os.getenv("COMFYUI_OUTPUT_ROOT")
 PUBLISH_PROJECT_ROOT = os.getenv("COMFY_MCP_PROJECT_ROOT")
 PUBLISH_ROOT = os.getenv("COMFY_MCP_PUBLISH_ROOT")
+
+# Publish backend: "local" (default) writes to a project directory; "s3" uploads
+# to any S3-compatible store (AWS S3, MinIO, RustFS). S3 is configured via
+# COMFY_MCP_S3_* env vars (see managers/storage.py:S3Config.from_env).
+PUBLISH_BACKEND = os.getenv("COMFY_MCP_PUBLISH_BACKEND", "local").lower()
+
+# Optional tool groups. Off by default so we don't add tools (and context) the
+# user hasn't asked for. Enable with COMFY_MCP_FEATURES=models,system or =all.
+ENABLED_FEATURES, UNKNOWN_FEATURES = parse_features(os.getenv("COMFY_MCP_FEATURES"))
 
 
 def print_startup_banner():
@@ -150,16 +165,30 @@ workflow_manager = WorkflowManager(WORKFLOW_DIR)
 defaults_manager = DefaultsManager(comfyui_client)
 asset_registry = AssetRegistry(ttl_hours=ASSET_TTL_HOURS, comfyui_base_url=COMFYUI_URL)
 
+# Resolve S3 config from env when the S3 backend is selected.
+publish_s3_config = None
+if PUBLISH_BACKEND == "s3":
+    from managers.storage import S3Config
+    publish_s3_config = S3Config.from_env()
+    if publish_s3_config is None:
+        logger.error(
+            "COMFY_MCP_PUBLISH_BACKEND=s3 but COMFY_MCP_S3_BUCKET is not set. "
+            "Publishing will be unavailable until S3 is configured."
+        )
+
 # Publish manager (always initialized, uses auto-detection)
 try:
     publish_config = PublishConfig(
         project_root=PUBLISH_PROJECT_ROOT,
         publish_root=PUBLISH_ROOT,
         comfyui_output_root=COMFYUI_OUTPUT_ROOT,
-        comfyui_url=COMFYUI_URL
+        comfyui_url=COMFYUI_URL,
+        backend=PUBLISH_BACKEND,
+        s3_config=publish_s3_config,
     )
     publish_manager = PublishManager(publish_config)
     logger.info(f"Publish manager initialized with project_root={publish_config.project_root} (method: {publish_config.project_root_method})")
+    logger.info(f"Publish backend: {publish_config.backend}")
     logger.info(f"Publish root: {publish_config.publish_root}")
     if publish_config.comfyui_output_root:
         logger.info(f"ComfyUI output root: {publish_config.comfyui_output_root} (method: {publish_config.comfyui_output_method})")
@@ -223,6 +252,37 @@ if publish_manager:
     register_publish_tools(mcp, asset_registry, publish_manager)
 else:
     logger.error("Publish manager not available - publish tools will not be registered")
+
+# Register opt-in tool groups gated by COMFY_MCP_FEATURES. Keeping these off by
+# default avoids flooding the client's tool list (and the LLM's context) with
+# tools the user hasn't requested.
+FEATURE_REGISTRARS = {
+    "models": lambda: register_model_tools(mcp, comfyui_client),
+    "nodes": lambda: register_node_tools(mcp, comfyui_client),
+    "upload": lambda: register_upload_tools(mcp, comfyui_client),
+    "system": lambda: register_system_tools(mcp, comfyui_client),
+    "jobs_api": lambda: register_jobs_api_tools(mcp, comfyui_client),
+}
+
+if UNKNOWN_FEATURES:
+    logger.warning(
+        "Ignoring unknown COMFY_MCP_FEATURES entries: %s. Known groups: %s",
+        ", ".join(UNKNOWN_FEATURES),
+        ", ".join(sorted(KNOWN_FEATURES)),
+    )
+
+for _feature, _register in FEATURE_REGISTRARS.items():
+    if _feature in ENABLED_FEATURES:
+        _register()
+        logger.info("Enabled optional tool group: %s", _feature)
+
+if ENABLED_FEATURES:
+    logger.info("Optional tool groups enabled: %s", ", ".join(sorted(ENABLED_FEATURES)))
+else:
+    logger.info(
+        "No optional tool groups enabled (set COMFY_MCP_FEATURES to opt in; known: %s)",
+        ", ".join(sorted(KNOWN_FEATURES)),
+    )
 
 if __name__ == "__main__":
     # Check if running as MCP command (stdio) or standalone (streamable-http)

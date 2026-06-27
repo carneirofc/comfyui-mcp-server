@@ -201,26 +201,22 @@ def register_publish_tools(
                     # Use source format for auto-generated filename
                     final_target_filename = auto_generate_filename(asset_id, format=source_ext if source_ext else "png")
             
-            # Resolve target path
-            target_path = publish_manager.resolve_target_path(final_target_filename)
-            
-            # Copy asset with optional compression
-            publish_info = publish_manager.copy_asset(
+            # Publish to the configured backend (local disk or S3) with optional compression
+            publish_info = publish_manager.store_asset(
                 source_path=source_path,
-                target_path=target_path,
+                target_filename=final_target_filename,
                 overwrite=overwrite,
                 asset_id=asset_id,
-                target_filename=final_target_filename,
                 web_optimize=web_optimize,
                 max_bytes=max_bytes
             )
-            
+
             # Update manifest.json if manifest_key provided
             if manifest_key:
                 try:
                     publish_manager.update_manifest(
                         manifest_key=manifest_key,
-                        filename=target_path.name
+                        filename=final_target_filename
                     )
                 except Exception as e:
                     # Manifest update failure is non-fatal
