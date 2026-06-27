@@ -446,7 +446,7 @@ comfyui-mcp-server/
 
 **Server won't start:**
 - Check ComfyUI is running on port 8188 (default)
-- Verify Python 3.11+ is installed (`python --version`)
+- Verify Python 3.14+ is installed (`python --version`)
 - Check all dependencies are installed: `uv sync`
 - Check server logs for specific error messages
 

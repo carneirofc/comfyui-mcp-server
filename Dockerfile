@@ -7,15 +7,15 @@
 # - Final stage runs as an unprivileged user on a slim base with no build tools.
 #
 # Tip for maximum supply-chain hardening: pin the base images by digest, e.g.
-#   FROM python:3.12-slim-bookworm@sha256:<digest> AS builder
+#   FROM python:3.14-slim-bookworm@sha256:<digest> AS builder
 
 ############################
 # Stage 1 — builder
 ############################
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 # Pinned, statically-linked uv binary from its official (distroless) image.
-COPY --from=ghcr.io/astral-sh/uv:0.5.18 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.18 /uv /bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ############################
 # Stage 2 — runtime
 ############################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # OCI image metadata (overridden/augmented by the CI metadata-action labels).
 LABEL org.opencontainers.image.title="comfyui-mcp-server" \

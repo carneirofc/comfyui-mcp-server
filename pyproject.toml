@@ -3,17 +3,17 @@ name = "comfyui-mcp-server"
 version = "0.1.2"
 description = "A lightweight MCP server that lets AI agents generate and iteratively refine images, audio, and video using a local ComfyUI instance."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 license = { file = "LICENSE" }
 dependencies = [
-    "requests>=2.31.0",
-    "mcp>=0.9.0",
-    "Pillow>=10.0.0",
+    "requests>=2.32.0",
+    "mcp>=1.28.0",
+    "Pillow>=12.0.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=7.4.0",
+    "pytest>=8.4.0",
 ]
 
 [tool.uv]
