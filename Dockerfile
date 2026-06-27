@@ -27,11 +27,13 @@ WORKDIR /app
 # changes. The project itself is a non-package (package = false), so there is
 # nothing else to install — deps land in /app/.venv.
 #
-# The `s3` group bundles boto3 so the S3 publish backend works out of the box
-# (enable it at runtime with COMFY_MCP_PUBLISH_BACKEND=s3); it adds a few MB.
+# --all-groups installs every optional dependency group (currently `s3`, which
+# bundles boto3) so the image is feature-complete: every backend and tool group
+# works out of the box, gated only by runtime env vars. --no-dev still excludes
+# test-only deps. New optional groups are picked up automatically.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project --group s3
+    uv sync --frozen --no-dev --all-groups --no-install-project
 
 ############################
 # Stage 2 — runtime
