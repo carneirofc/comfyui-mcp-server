@@ -26,9 +26,12 @@ WORKDIR /app
 # Install ONLY dependencies first so this layer is cached until the lockfile
 # changes. The project itself is a non-package (package = false), so there is
 # nothing else to install — deps land in /app/.venv.
+#
+# The `s3` group bundles boto3 so the S3 publish backend works out of the box
+# (enable it at runtime with COMFY_MCP_PUBLISH_BACKEND=s3); it adds a few MB.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-dev --no-install-project --group s3
 
 ############################
 # Stage 2 — runtime
@@ -63,7 +66,7 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 
 # Application source (only what the server needs at runtime).
-COPY --chown=app:app server.py comfyui_client.py asset_processor.py ./
+COPY --chown=app:app server.py comfyui_client.py asset_processor.py feature_flags.py ./
 COPY --chown=app:app managers ./managers
 COPY --chown=app:app models ./models
 COPY --chown=app:app tools ./tools
