@@ -77,6 +77,80 @@ That’s it.
 
 ---
 
+## Run with Docker
+
+Prefer not to manage a local Python environment? A prebuilt, hardened image is published to the GitHub Container Registry on every push to `main`:
+
+```
+ghcr.io/carneirofc/comfyui-mcp-server:latest
+```
+
+The image is minimal (slim Python base, dependencies from the frozen `uv.lock`, no build tools) and runs as a non-root user. Images are also tagged by commit SHA (`sha-<short>`) and, for releases, by version (`vX.Y.Z`).
+
+### Prerequisite
+
+ComfyUI must be running and reachable **from inside the container**. The server checks ComfyUI on startup and exits if it can't connect.
+
+### Run
+
+```bash
+docker run --rm \
+  -p 9000:9000 \
+  -e COMFYUI_URL=http://host.docker.internal:8188 \
+  --add-host=host.docker.internal:host-gateway \
+  ghcr.io/carneirofc/comfyui-mcp-server:latest
+```
+
+- `-p 9000:9000` publishes the MCP endpoint at `http://127.0.0.1:9000/mcp`.
+- `COMFYUI_URL` points the server at your ComfyUI instance. `host.docker.internal` resolves to the Docker host; the `--add-host` flag is required on **Linux** (it's automatic with Docker Desktop on macOS/Windows).
+- If ComfyUI runs in another container on the same Docker network, use that service name instead, e.g. `-e COMFYUI_URL=http://comfyui:8188` (and drop the `--add-host`).
+
+Then connect a client exactly as in [Use with an AI Agent](#use-with-an-ai-agent-cursor--claude--n8n) — the endpoint is identical.
+
+### Configuration
+
+Every environment variable from [Configuration](#configuration) works via `-e`. The most common:
+
+| Variable | Default (in image) | Description |
+| --- | --- | --- |
+| `COMFYUI_URL` | `http://host.docker.internal:8188` | ComfyUI base URL |
+| `COMFY_MCP_ASSET_TTL_HOURS` | `24` | Asset registry TTL |
+| `COMFY_MCP_WORKFLOW_DIR` | `/app/workflows` | Workflow JSON directory |
+| `COMFYUI_OUTPUT_ROOT` | (auto-detected) | ComfyUI output dir, used by the publish tools |
+
+Add custom workflows without rebuilding by mounting a directory over `/app/workflows`:
+
+```bash
+-v /path/to/workflows:/app/workflows:ro
+```
+
+To use the publish tools, mount your ComfyUI output (and project) directories and point the server at them:
+
+```bash
+docker run --rm \
+  -p 9000:9000 \
+  -e COMFYUI_URL=http://host.docker.internal:8188 \
+  -e COMFYUI_OUTPUT_ROOT=/comfy/output \
+  -v /path/to/ComfyUI/output:/comfy/output:ro \
+  -v /path/to/your/project:/project \
+  --add-host=host.docker.internal:host-gateway \
+  ghcr.io/carneirofc/comfyui-mcp-server:latest
+```
+
+### Build locally
+
+```bash
+docker build -t comfyui-mcp-server .
+docker run --rm -p 9000:9000 \
+  -e COMFYUI_URL=http://host.docker.internal:8188 \
+  --add-host=host.docker.internal:host-gateway \
+  comfyui-mcp-server
+```
+
+> **Note:** The container still binds to all interfaces on its port `9000`; only the host mapping you choose with `-p` is reachable. Keep the published port bound to localhost (or behind a reverse proxy with auth) — don't expose it to untrusted networks.
+
+---
+
 ## Use with an AI Agent (Cursor / Claude / n8n)
 
 Once the server is running, you can connect it to an AI client.
